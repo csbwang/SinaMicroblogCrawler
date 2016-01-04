@@ -2,17 +2,16 @@
 # -*-coding:utf8-*-
 __author__ = 'phenix'
 
-from microblogpy.auth import OAuthHandler
-from microblogpy.api import API
-from microblogpy.binder import bind_api
-from microblogpy.error import microblogpError
+from weibopy.auth import OAuthHandler
+from weibopy.api import API
 import threading
 import thread
-import microblogpy.mysql_db as mysql
+import weibopy.mysql_db as mysql
 import time
 import os
 import logging.config
 import sys
+
 default_encoding = 'utf-8'
 if sys.getdefaultencoding() != default_encoding:
 	reload(sys)
@@ -78,6 +77,7 @@ class SinaMicroblogCrawler():
 			user = self.api.get_user(id)
 		except BaseException as e:
 			log.error('Error occured when access userprofile user_id:{0} - Error:{1}'.format(id, e))
+			# 抓取过于频繁，sleep下
 			if str(e).find('401') > 0 or str(e).find('403') > 0:
 				time.sleep(1800)
 			return None
@@ -217,30 +217,30 @@ class SinaMicroblogCrawler():
 		time.sleep(sleep_time + 1.5)
 
 
-def reptile(SinaMicroblogCrawler):
+def crawling(sina_microblog_crawler):
 	global need_view_users
 	global viewed_users
 	while need_view_users:
-		mutex.acquire()
 		try:
+			mutex.acquire()
 			id = need_view_users.pop()
 			if str(id) in viewed_users:
+				mutex.release()
 				continue
 			else:
 				viewed_users[str(id)] = 1
+				mutex.release()
 		except:
-			mutex.release()
 			raise Exception('user id get error')
-		mutex.release()
-		SinaMicroblogCrawler.manage_access()
-		return_ids = SinaMicroblogCrawler.friends_ids(str(id))
+		# sina_microblog_crawler.manage_access()
+		return_ids = sina_microblog_crawler.friends_ids(str(id))
 		need_view_users.extend(return_ids)
-		user_profile = SinaMicroblogCrawler.get_userprofile(str(id))
+		user_profile = sina_microblog_crawler.get_userprofile(str(id))
 		if user_profile is None:
 			continue
-		SinaMicroblogCrawler.get_latest_microblog(count=100, user_id=str(id))
+		sina_microblog_crawler.get_latest_microblog(count=100, user_id=str(id))
 		if ids_num > max_user_num:
-			thread.exit()
+			break
 
 
 def get_connection_2_mysql(config_file):
@@ -251,8 +251,8 @@ def get_need_view_users():
 	need_view_users = []
 	sql = 'SELECT uid FROM sinauser'
 	result = db.query(sql)
-	for row in range(500):
-		need_view_users.append(result[row][0])
+	for row in result:
+		need_view_users.append(row[0])
 	return need_view_users
 
 
@@ -265,20 +265,21 @@ def get_viewed_users():
 	return viewed_users
 
 
-def run_crawler(consumer_key, consumer_secret, key, secret):
+def run(consumer_key, consumer_secret, key, secret):
 	try:
 		print threading.currentThread().name, 'start'
-		SinaMicroblogCrawler = SinaMicroblogCrawler(consumer_key, consumer_secret)
-		SinaMicroblogCrawler.setToken(key, secret)
-		reptile(SinaMicroblogCrawler)
+		crawler = SinaMicroblogCrawler(consumer_key, consumer_secret)
+		crawler.setToken(key, secret)
+		crawling(crawler)
+		print threading.currentThread().name + ' id end'
 	except Exception as e:
 		log.error("Error occured in run_crawler tid:{0} - Error:{1}".format(threading.currentThread().name, e))
-		raise Exception(threading.currentThread().name + 'end')
+		print threading.currentThread().name + ' id end'
 
 
 if __name__ == "__main__":
 	logging.config.fileConfig("logging.conf")
-	log = logging.getLogger('logger_SinaMicroblogCrawler')
+	log = logging.getLogger('logger_sina_microblog_crawler')
 	db = get_connection_2_mysql('mysql.ini')
 	need_view_users = get_need_view_users()
 	viewed_users = get_viewed_users()
@@ -286,10 +287,10 @@ if __name__ == "__main__":
 	max_user_num = 10000000
 	threads = []
 	# 实例化所有线程
-	with open('appkey_test.txt') as f:
+	with open('appkey.txt') as f:
 		for i in f.readlines():
 			j = i.strip().split('\t')
-			t = threading.Thread(target=run_crawler, args=(j[0], j[1], j[2], j[3]))
+			t = threading.Thread(target=run, args=(j[0], j[1], j[2], j[3]))
 			threads.append(t)
 	mutex = threading.RLock()
 	# 开始所有线程

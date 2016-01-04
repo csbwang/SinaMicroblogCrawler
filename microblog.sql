@@ -18,8 +18,8 @@ SET FOREIGN_KEY_CHECKS=0;
 -- ----------------------------
 -- Table structure for sina_microblog
 -- ----------------------------
-DROP TABLE IF EXISTS `sina_microblog`;
-CREATE TABLE `sina_microblog` (
+DROP TABLE IF EXISTS `microblog`;
+CREATE TABLE `microblog` (
   `mid` varchar(20) COLLATE utf8_unicode_ci NOT NULL,
   `created_at` datetime NOT NULL,
   `text` varchar(500) COLLATE utf8_unicode_ci NOT NULL,
